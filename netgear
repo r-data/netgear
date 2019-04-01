@@ -1,0 +1,155 @@
+library(bitops)
+library(RCurl)
+library(rjson)
+
+myHttpheader <- c(
+  
+  "User-Agent"="Mozilla/5.0 (Windows; U; Windows NT 5.1; zh-CN; rv:1.9.1.6) ",
+  
+  "Accept"="text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  
+  "Accept-Language"="en-us",
+  
+  "Connection"="keep-alive",
+  
+  "Accept-Charset"="GB2312,utf-8;q=0.7,*;q=0.7"
+  
+)
+
+ak<-"hNY0sZl7vnyEdrbDofsOIyIS"
+
+address<-read.table("address.txt",stringsAsFactors=FALSE,header=TRUE)
+keywds<-read.table("keywds.txt",stringsAsFactors=FALSE,header=TRUE)
+
+
+findtarget<-function(mm) {
+  a<-grep("营业厅",mm)
+  b<-1
+  c<-tryCatch({if (a[1]>0) return(a[1]) else return(b)}, error=function(e) return(1))
+}
+
+
+locate<-function(address){
+city<-"上海市"
+requestURL_1<-paste("http://api.map.baidu.com/geocoder/v2/?ak=",ak,"&output=json&address=",address,"&city=",city,sep="")
+temp <- getURL(requestURL_1)
+address_2 <- fromJSON(paste(temp, collapse=""))
+#取得目标地坐标，第一层数据
+location<-paste(address_2$result$location$lat,address_2$result$location$lng,sep=",")
+requestURL_2<-paste("http://api.map.baidu.com/place/v2/search?&query=","电信","&location=",location,"&radius=500&output=json&ak=",ak,sep="")
+store_list<-getURL(requestURL_2)
+#取得待选门店列表
+store_list<-fromJSON(paste(store_list, collapse=""))
+store_list_clean<-store_list$results
+store_name_filt<-sapply(store_list$results,"[",1)
+#store_name_filt<-do.call(rbind,store_name_filt)
+#return(store_name_filt)
+store_target<-findtarget(store_name_filt)
+#返回一个值，指示序号
+store_loc<-sapply(store_list_clean,"[",2)
+loc_3<-store_loc[store_target]
+#再次获得地址，这次统统用下标3
+location_3<-paste(loc_3$location$lat,loc_3$location$lng,sep=",")
+return(location_3)
+}
+
+gatherlist<-function(keywds,loc) {
+  tmp1<-list()
+  i<-NULL
+  for (i in 0:100) {
+  requestURL_3<-paste("http://api.map.baidu.com/place/v2/search?ak=",ak,"&output=json&query=",keywds,"&page_size=20&page_num=",i,"&scope=1&location=",loc,"&radius=500",sep="")
+  store_list_js_3<-getURL(requestURL_3)
+  store_list_3<-fromJSON(paste(store_list_js_3, collapse=""))
+  store_list_clean_3<-store_list_3$results
+  tmp1<-c(tmp1,store_list_clean_3)
+  if (length(store_list_clean_3)>0) i<-i+1 
+  if (length(store_list_clean_3)==0) break
+  }
+  tmp1
+  }
+
+trans_list<-function(mm) {
+  n<-length(mm)
+  name<-vector()
+  locationlat<-vector()
+  locationlng<-vector()
+  address<-vector()
+  street_id<-vector()
+  uid<-vector()
+  if(n>0){
+  for(i in 1:n) {
+    name[i]<-mm[[i]]$name
+    locationlat[i]<-mm[[i]]$location$lat
+    locationlng[i]<-mm[[i]]$location$lng
+    address[i]<-mm[[i]]$address
+    #street_id[i]<-mm[[i]]$street_id
+    uid[i]<-mm[[i]]$uid
+  }
+  nn<-data.frame(name,locationlat,locationlng,uid,address)
+  } else {
+    nn<-data.frame("name","locationlat","locationlng","uid","address")
+  }
+}
+
+
+trans_list_bus<-function(mm) {
+  n<-length(mm)
+  address<-vector()
+  if(n>0){
+    for(i in 1:n) {
+      address[i]<-mm[[i]]$address
+    }
+    return(address)
+  } else {
+    nn<-mm
+  }
+}
+
+#针对通用类型，记得将gather list改为500
+for (i in 1:length(address$store_address)) {
+  kws<-length(keywds$sub_key_words)
+  for (j in 1:kws) {
+  a1<-locate(address$store_address[i])
+  a2<-address$store_name[i]
+  a3<-address$store_address[i]
+    b1<-gatherlist(keywds$sub_key_words[j],a1)
+    b2<-keywds$key_words[j]
+    b3<-keywds$sub_key_words[j]
+    cc<-trans_list(b1)
+    dd<-cbind(a2,a3,b2,b3,cc)
+    filename<-paste(i,a2,j,b3,".txt",sep="_")
+    write.table(dd,filename)
+  }
+}
+
+#针对交通信息，记得将gather list改为200
+for (i in 1:length(address$store_address)) {
+  kws<-length(keywds$sub_key_words)
+  for (j in 1:kws) {
+    a1<-locate(address$store_address[i])
+    a2<-address$store_name[i]
+    a3<-address$store_address[i]
+    b1<-gatherlist(keywds$sub_key_words[j],a1)
+    b2<-keywds$key_words[j]
+    b3<-keywds$sub_key_words[j]
+    cc<-trans_list_bus(b1)
+    aa<-function(i) { i<-strsplit(i,";") }
+    cc<-lapply(cc,aa)
+    cc<-sapply(cc,"[",1)
+    ff<-function(ff) {
+      a<-length(ff)
+      b<-c()
+      if (a>0) {
+      for (i in 1:a) {
+        c<-ff[[i]]
+        b<-c(b,c)
+      }      
+      return(b)
+      } else {b<-c("NA") }
+    }
+    cc<-unique(ff(cc))
+    dd<-cbind(a2,a3,b2,b3,cc)
+    filename<-paste(i,a2,j,b3,".txt",sep="_")
+    write.table(dd,filename)
+  }
+}
