@@ -16,7 +16,7 @@ myHttpheader <- c(
   
 )
 
-ak<-"hNY0sZl7vnyEdrbDofsOIyIS"
+ak<-"******"
 
 address<-read.table("address.txt",stringsAsFactors=FALSE,header=TRUE)
 keywds<-read.table("keywds.txt",stringsAsFactors=FALSE,header=TRUE)
